@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "@/i18n/navigation";
 import Meta from "./components/Meta";
 import { validateCredentials, setLoggedIn, isLoggedIn, STATIC_EMAIL } from "./auth";
+import Image from "next/image";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function SignInPage() {
     setError("");
     setLoading(true);
 
-    if (!email.trim() || !password) {
+    if (!email.trim() || !password) {  
       setError("Please enter email and password.");
       setLoading(false);
       return;
@@ -42,11 +43,20 @@ export default function SignInPage() {
   return (
     <>
       <Meta
-        title="Sign In"
-        description="Sign in to access your account."
+        title="For Client Information - GTCFX"
+        description="Login to access your GTCFX account and manage your client, view market insights, and stay updated with the latest financial news."
       />
       <div className="min-h-screen bg-[#0F143A] text-white flex items-center justify-center px-4">
         <div className="w-full max-w-md">
+           <div className="flex md:justify-center justify-center mb-14">
+           <Image
+                    src="https://gtcfx-bucket.s3.ap-southeast-1.amazonaws.com/img/footer-logo.webp"
+                    width={200}
+                    height={72}
+                    alt="GTCFX"
+                    className="lg:w-[200px] lg:h-[72px] md:w-[120px] md:h-[53px] w-[130px] h-[47px] cursor-pointer"
+                  />
+        </div>
           <div className="rounded-xl border border-[#293794]/80 bg-[#1a1f4a]/60 p-8 shadow-lg backdrop-blur">
             <h1 className="text-2xl font-bold text-white tracking-tight mb-2 text-center">
               Sign In
