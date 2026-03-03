@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+:root {
+  font-family: var(--font-poppins);
+}
+@theme {
+  --color-primary: #1a2256;     /* Dark blue */
+  --color-secondary: #b98751;   /* Gold yellow */
+}
+
+body {
+  font-family: var(--font-poppins), sans-serif;
+}
+
+.flip-container {
+  perspective: 1000px;
+}
+
+.flip-inner {
+  transform-style: preserve-3d;
+  transition: transform 0.6s ease;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Flip on hover (vertical flip) */
+.flip-container:hover .flip-inner {
+  transform: rotateX(180deg);
+}
+
+/* Front and back faces */
+.flip-front,
+.flip-back {
+  backface-visibility: hidden;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.875rem; /* text-sm */
+  font-weight: 500;
+}
+
+/* Back face flipped vertically */
+.flip-back {
+  transform: rotateX(180deg);
+  background-color: #02002f; /* Tailwind's primary */
+  color: white;
+}
+
+.flip-front {
+  background-color: #f5f5f5;
+  color: #1d2746;
+}
+
+.container {
+  width: 100%;
+  padding-left: 1rem;
+  padding-right: 1rem;
+
+  @media (width >= 40rem) {
+    max-width: 40rem;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  @media (width >= 48rem) {
+    max-width: 48rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+
+  @media (width >= 64rem) {
+    max-width: 64rem;
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+  }
+
+  @media (width >= 80rem) {
+    max-width: 1380px;
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+
+  @media (width >= 96rem) {
+   max-width: 1380px;
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+}
+

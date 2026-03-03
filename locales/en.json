@@ -1,0 +1,105 @@
+{
+  "Header": {
+    "logoAlt": "GTCFX",
+    "registerCta": "Register Now",
+    "bookCta": "Book a Meeting"
+  },
+
+  "home": {
+    "metaData": {
+      "title": "Get 5,000 USC to Trade. No Deposit Needed! | GTC",
+      "description": "Fill in your details, activate your GTC Cent trading account, and start trading with a 5,000 USC bonus today. Real funds, Real Trading Power, No risk to your own capital & Instant Withdrawals."
+    },
+    "banner": {
+      "topText": "Get 5,000 USC to Trade.",
+      "desc": "No Deposit Needed!",
+      "para1": "Fill in your details, activate your GTC Cent trading account, and start trading with a 5,000 USC bonus today.",
+      "list": {
+        "item1": {
+          "title": "Real Funds, Real Trading Power",
+          "para1": "Use your 5,000 USC to trade real markets."
+        },
+        "item2": {
+          "title": "No Risk to Your Own Capital",
+          "para1": "Test strategies while your funds stay safe."
+        },
+        "item3": {
+          "title": "Instant Withdrawals",
+          "para1": "Peace of mind with fast withdrawals."
+        }
+      }
+    },
+    "form": {
+      "heading": "Register Now",
+      "closeAlt": "Close the modal",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "email": "Email",
+      "phone": "Mobile Number",
+      "country": "Country of Residence",
+      "otp": "OTP has been sent to given Email",
+      "getCode": "Get Code",
+      "sending": "Sending...",
+      "sendOtp": "Send OTP",
+      "code":"Invitation Code(Optional)",
+      "verifyCode": "Verify Code",
+      "termsLabel": "Please accept the terms and conditions",
+      "termsText": "By submitting your application you confirm that you have read, understood and agreed to all the Terms And Conditions, Bonus Terms and Conditions and Client Agreement .",
+      "conset": "I consent to GTC contacting me at reasonable times, and that my number is not on the Do Not Call Register (DNCR).",
+      "clientAgreement": "Client Agreement",
+      "privacyPolicy": "Privacy Policy",
+      "submit": "Submit Now",
+      "submitting": "Submitting...",
+      "otpSuccess": "Otp Verified Successfully!",
+      "otpFail": "Otp Verification Failed try again!",
+      "thankYou1": "Form Submitted Successfully!",
+      "otpSent": "Otp sent successfully!",
+      "btnText": "Get my Bonus",
+      "password": "Password",
+      "confirmPassword": "Confirm Password",
+      "errors": {
+        "fullNameFormat": "Full name can only contain letters.",
+        "firstNameRequired": "First name is required",
+        "lastNameFormat": "Last name can only contain letters.",
+        "lastNameRequired": "Last name is required",
+        "emailInvalid": "Invalid email address",
+        "emailRequired": "Email is required",
+        "phoneRequired": "Phone number is required",
+        "countryRequired": "Country is required",
+        "otpLength": "OTP must be 6 digits",
+        "otpRequired": "OTP is required",
+        "passwordRequired": "Password is required",
+        "confirmPasswordRequired": "Confirm password is required",
+        "passwordMatch": "Password not match",
+        "phoneInvalid": "Phone number is not valid",
+        "termsRequired": "Please accept the terms and conditions"
+      },
+      "thankYou": "Thanks",
+      "almostThere": "You’re Almost There!",
+      "emailSent": "We’ve just sent you an email to {email}, which explains what happens next.",
+      "checkSpam": "It’s also a good idea to check your spam or junk folder as sometimes emails like to hide there. If the email we’ve sent you has made its way into your spam or junk folder, simply move it back into your inbox.",
+      "seeYou": "See you soon!",
+      "helpSection": {
+        "title": "Having trouble?",
+        "phoneLabel": "Contact us on",
+        "phone": "+971 800 667788",
+        "emailLabel": "or email the GTC Partnership Team at",
+        "email": "partners@gtcfx.com"
+      }
+    },
+    "confirmationThankYou": {
+      "heading": "Thanks!",
+      "subheading": "You’re Almost There!",
+      "description1": "We’ve sent you an email to {email}. Go ahead and click on that link. You’ll then be called by our friendly Customer Care team who will help you set up your GTC trading account and trade gold with the lowest spreads.",
+      "description2": "Go ahead and check your spam or junk folder as sometimes emails like to hide there! If the email we’ve sent you has made its way into your spam or junk folder, simply move it back into your inbox.",
+      "farewell": "See you soon!",
+      "help": {
+        "heading": "Having trouble?",
+        "phone": "Contact us on +971 800 667788 or ",
+        "email": "email support@gtcfx.com",
+        "seeYou": "See you soon",
+        "team": "The GTC Team"
+      }
+    }
+  }
+}
