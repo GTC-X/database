@@ -95,7 +95,7 @@ export async function GET(req) {
         });
         queryText += " WHERE " + conditions.join(" AND ");
       }
-      queryText += " LIMIT 100";
+      // queryText += " LIMIT 10000";
 
       const result = await client.query(
         queryParams.length ? { text: queryText, values: queryParams } : queryText

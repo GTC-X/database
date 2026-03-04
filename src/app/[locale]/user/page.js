@@ -26,21 +26,41 @@ function getColumnLabel(col) {
     return COLUMN_LABELS[col] ?? col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+const FILTER_COLUMNS = Object.keys(COLUMN_LABELS);
+const PAGE_SIZE = 20;
+
+function getPaginationItems(currentPageOneBased, totalPages, siblingCount = 1) {
+    if (totalPages <= 1) return [];
+    const current = Math.max(1, Math.min(currentPageOneBased, totalPages));
+    const pages = new Set([1, totalPages]);
+    for (let i = Math.max(1, current - siblingCount); i <= Math.min(totalPages, current + siblingCount); i++) {
+        pages.add(i);
+    }
+    const sorted = Array.from(pages).sort((a, b) => a - b);
+    const result = [];
+    for (let i = 0; i < sorted.length; i++) {
+        if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push("…");
+        result.push(sorted[i]);
+    }
+    return result;
+}
+
 export default function GTCRegisterWithDesign() {
     const router = useRouter();
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [accountData, setAccountData] = useState({
         rows: [],
         fields: [],
-        loading: true,
+        loading: false,
         error: null,
     });
-    const [filters, setFilters] = useState([{ column: "", value: "", match: "exact" }]);
+    const [filters, setFilters] = useState([{ column: "email", value: "", match: "exact" }]);
     const [appliedFilters, setAppliedFilters] = useState([]);
     const [exportColumns, setExportColumns] = useState(new Set());
     const [exportPanelOpen, setExportPanelOpen] = useState(false);
     const hasInitializedExportRef = useRef(false);
     const [authChecked, setAuthChecked] = useState(false);
+    const [pageIndex, setPageIndex] = useState(0);
     const t = useTranslations("home.banner");
 
     useEffect(() => {
@@ -122,6 +142,7 @@ export default function GTCRegisterWithDesign() {
                 loading: false,
                 error: null,
             });
+            setPageIndex(0);
         } catch (e) {
             setAccountData((prev) => ({
                 ...prev,
@@ -130,10 +151,6 @@ export default function GTCRegisterWithDesign() {
             }));
         }
     }, []);
-
-    useEffect(() => {
-        fetchData(appliedFilters);
-    }, [appliedFilters, fetchData]);
 
     const updateFilter = (index, field, value) => {
         setFilters((prev) => {
@@ -145,7 +162,7 @@ export default function GTCRegisterWithDesign() {
     };
 
     const addFilter = () => {
-        setFilters((prev) => [...prev, { column: "", value: "", match: "exact" }]);
+        setFilters((prev) => [...prev, { column: "email", value: "", match: "exact" }]);
     };
 
     const removeFilter = (index) => {
@@ -154,17 +171,25 @@ export default function GTCRegisterWithDesign() {
 
     const handleApplyFilter = (e) => {
         e?.preventDefault();
-        setAppliedFilters(
-            filters.filter((f) => f.column && String(f.value).trim() !== "")
-        );
+        const activeFilters = filters.filter((f) => f.column && String(f.value).trim() !== "");
+        setAppliedFilters(activeFilters);
+        if (activeFilters.length > 0) {
+            fetchData(activeFilters);
+        }
     };
 
     const handleClearFilter = () => {
-        setFilters([{ column: "", value: "", match: "exact" }]);
+        setFilters([{ column: "email", value: "", match: "exact" }]);
         setAppliedFilters([]);
     };
 
     const hasActiveFilters = appliedFilters.length > 0;
+
+    const totalRows = accountData.rows.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+    const startItem = totalRows === 0 ? 0 : pageIndex * PAGE_SIZE + 1;
+    const endItem = Math.min((pageIndex + 1) * PAGE_SIZE, totalRows);
+    const paginatedRows = accountData.rows.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE);
 
     if (!authChecked) {
         return (
@@ -207,7 +232,7 @@ export default function GTCRegisterWithDesign() {
                                             className="w-full rounded-lg border border-[#293794] bg-[#0F143A] px-4 py-2.5 text-white focus:border-[#B48755] focus:outline-none focus:ring-1 focus:ring-[#B48755]"
                                         >
                                             <option value="">Select column</option>
-                                            {accountData.fields.map((col) => (
+                                            {FILTER_COLUMNS.map((col) => (
                                                 <option key={col} value={col}>
                                                     {getColumnLabel(col)}
                                                 </option>
@@ -296,7 +321,12 @@ export default function GTCRegisterWithDesign() {
                         <div className="flex flex-col gap-3 border-t border-[#293794]/40 bg-[#0F143A]/50 py-3">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <span className="text-xs text-gray-500">
-                                    Showing {accountData.rows.length} row{accountData.rows.length !== 1 ? "s" : ""}
+                                    Showing {startItem}-{endItem} of {totalRows} row{totalRows !== 1 ? "s" : ""}
+                                    {totalPages > 1 && (
+                                        <span className="ml-2 text-[#B48755]">
+                                            (Page {pageIndex + 1} of {totalPages})
+                                        </span>
+                                    )}
                                 </span>
                                 <div className="flex items-center gap-2">
                                     <button
@@ -400,9 +430,9 @@ export default function GTCRegisterWithDesign() {
                                                 </td>
                                             </tr>
                                         ) : (
-                                            accountData.rows.map((row, i) => (
+                                            paginatedRows.map((row, i) => (
                                                 <tr
-                                                    key={i}
+                                                    key={pageIndex * PAGE_SIZE + i}
                                                     className="border-b border-[#293794]/40 transition hover:bg-[#293794]/30"
                                                 >
                                                     {accountData.fields.map((col) => (
@@ -421,6 +451,73 @@ export default function GTCRegisterWithDesign() {
                                 </table>
                             </div>
 
+                            {totalPages > 1 && (
+                                <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-2 border-t border-[#293794]/40 px-2 py-3 sm:px-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPageIndex(0)}
+                                        disabled={pageIndex === 0}
+                                        className="rounded-lg border border-[#293794] bg-[#1a1f4a] px-2 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-gray-300 transition hover:bg-[#293794] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                        aria-label="First page"
+                                    >
+                                        First
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+                                        disabled={pageIndex === 0}
+                                        className="rounded-lg border border-[#293794] bg-[#1a1f4a] px-2 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-gray-300 transition hover:bg-[#293794] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                        aria-label="Previous page"
+                                    >
+                                        Prev
+                                    </button>
+                                    <div className="flex items-center gap-0.5 sm:gap-1 mx-1">
+                                        {getPaginationItems(pageIndex + 1, totalPages, 1).map((item, i) =>
+                                            item === "…" ? (
+                                                <span key={`ellipsis-${i}`} className="px-1 sm:px-2 py-1 text-gray-500 text-sm" aria-hidden="true">
+                                                    …
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    key={item}
+                                                    type="button"
+                                                    onClick={() => setPageIndex(item - 1)}
+                                                    className={`min-w-[28px] sm:min-w-[36px] rounded-lg border px-1.5 py-1.5 sm:px-2 sm:py-2 text-xs sm:text-sm font-medium transition disabled:cursor-default ${
+                                                        pageIndex + 1 === item
+                                                            ? "border-[#B48755] bg-[#B48755] text-white"
+                                                            : "border-[#293794] bg-[#1a1f4a] text-gray-300 hover:bg-[#293794] hover:text-white"
+                                                    }`}
+                                                    aria-label={pageIndex + 1 === item ? `Page ${item} (current)` : `Page ${item}`}
+                                                    aria-current={pageIndex + 1 === item ? "page" : undefined}
+                                                >
+                                                    {item}
+                                                </button>
+                                            )
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPageIndex((p) => Math.min(totalPages - 1, p + 1))}
+                                        disabled={pageIndex >= totalPages - 1}
+                                        className="rounded-lg border border-[#293794] bg-[#1a1f4a] px-2 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-gray-300 transition hover:bg-[#293794] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                        aria-label="Next page"
+                                    >
+                                        Next
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPageIndex(totalPages - 1)}
+                                        disabled={pageIndex >= totalPages - 1}
+                                        className="rounded-lg border border-[#293794] bg-[#1a1f4a] px-2 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-gray-300 transition hover:bg-[#293794] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                        aria-label="Last page"
+                                    >
+                                        Last
+                                    </button>
+                                    <span className="ml-1 sm:ml-2 px-2 py-1.5 text-xs sm:text-sm text-gray-500 whitespace-nowrap" aria-live="polite">
+                                        {pageIndex + 1} / {totalPages}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     )}
                 </section>
