@@ -20,6 +20,7 @@ const COLUMN_LABELS = {
     mt4_server: "MT4 server",
     mt5_server: "MT5 server",
     update_time: "Update time",
+    max_usertype: "Max Usertype",
 };
 
 function getColumnLabel(col) {
