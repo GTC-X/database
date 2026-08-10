@@ -125,7 +125,18 @@ export default function GTCRegisterWithDesign() {
                 `/api/client-account-info?${params.toString()}`,
                 { cache: "no-store" }
             );
-            const data = await res.json();
+            const contentType = res.headers.get("content-type") || "";
+            let data;
+            if (contentType.includes("application/json")) {
+                data = await res.json();
+            } else {
+                const text = await res.text();
+                throw new Error(
+                    res.ok
+                        ? "Server returned an unexpected response format."
+                        : `Server error (${res.status}). ${text.slice(0, 200)}`
+                );
+            }
             if (!res.ok) {
                 setAccountData((prev) => ({
                     ...prev,

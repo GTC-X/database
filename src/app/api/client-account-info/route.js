@@ -9,26 +9,80 @@ export const dynamic = "force-dynamic";
 const CONNECT_TIMEOUT_MS = 30000;
 const RETRY_COUNT = 2;
 const RETRY_DELAY_MS = 2000;
+const MAX_ROWS = 10000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function GET(req) {
-  const uri = process.env.HOLOGRES_URI;
+function serializeValue(value) {
+  if (value == null) return value;
+  if (typeof value === "bigint") return value.toString();
+  if (value instanceof Date) return value.toISOString();
+  if (Buffer.isBuffer(value)) return value.toString("base64");
+  return value;
+}
+
+function serializeRows(rows) {
+  return rows.map((row) => {
+    const out = {};
+    for (const [key, value] of Object.entries(row)) {
+      out[key] = serializeValue(value);
+    }
+    return out;
+  });
+}
+
+function buildHologresUser(raw) {
+  if (!raw) return raw;
+  return raw.includes("$marketing") ? raw : `${raw}$marketing`;
+}
+
+function buildHologresPassword(raw) {
+  if (!raw) return raw;
+  return raw.endsWith("$p") ? raw : `${raw}$p`;
+}
+
+function getPgConfig() {
+  const uri = process.env.HOLOGRES_URI?.trim();
+  if (uri) {
+    return {
+      connectionString: uri,
+      connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
+      ssl: false,
+    };
+  }
+
   const host = process.env.HOLOGRES_HOST;
-    const user = `${process.env.HOLOGRES_USER}$marketing`;
-    const password = `${process.env.HOLOGRES_PASSWORD}$p`;
+  const user = buildHologresUser(process.env.HOLOGRES_USER);
+  const password = buildHologresPassword(process.env.HOLOGRES_PASSWORD);
   const database = process.env.HOLOGRES_DATABASE || "postgres";
-  const port = process.env.HOLOGRES_PORT || 80;
+  const port = Number(process.env.HOLOGRES_PORT) || 80;
 
-  const useUri = !!uri?.trim();
+  if (!host || !user || !password) {
+    return null;
+  }
 
-  if (!useUri && (!host || !user || !password)) {
+  return {
+    host,
+    port,
+    user,
+    password,
+    database,
+    connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
+    ssl: false,
+  };
+}
+
+export async function GET(req) {
+  try {
+  const config = getPgConfig();
+
+  if (!config) {
     return NextResponse.json(
       {
         error:
-          "Missing Hologres config. Set HOLOGRES_URI (or HOLOGRES_HOST, HOLOGRES_USER, HOLOGRES_PASSWORD) in .env.local",
+          "Missing Hologres config. Set HOLOGRES_URI (or HOLOGRES_HOST, HOLOGRES_USER, HOLOGRES_PASSWORD) in environment variables.",
       },
       { status: 500 }
     );
@@ -62,18 +116,6 @@ export async function GET(req) {
     }
   }
 
-  const config = useUri
-    ? { connectionString: uri, connectionTimeoutMillis: CONNECT_TIMEOUT_MS, ssl: false }
-    : {
-        host,
-        port: Number(port) || 80,
-        user,
-        password,
-        database,
-        connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
-        ssl: false,
-      };
-
   let lastError = null;
   for (let attempt = 0; attempt <= RETRY_COUNT; attempt++) {
     const client = new Client(config);
@@ -95,7 +137,7 @@ export async function GET(req) {
         });
         queryText += " WHERE " + conditions.join(" AND ");
       }
-      // queryText += " LIMIT 10000";
+      queryText += ` LIMIT ${MAX_ROWS}`;
 
       const result = await client.query(
         queryParams.length ? { text: queryText, values: queryParams } : queryText
@@ -103,7 +145,7 @@ export async function GET(req) {
       await client.end();
 
       return NextResponse.json({
-        rows: result.rows,
+        rows: serializeRows(result.rows),
         fields: result.fields?.map((f) => f.name) ?? [],
       });
     } catch (err) {
@@ -128,4 +170,11 @@ export async function GET(req) {
     { error: message + (hint ? ` ${hint}` : "") },
     { status: 500 }
   );
+  } catch (err) {
+    console.error("[client-account-info]", err);
+    return NextResponse.json(
+      { error: err?.message || "Unexpected server error" },
+      { status: 500 }
+    );
+  }
 }
