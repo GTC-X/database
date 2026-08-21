@@ -100,7 +100,7 @@ export async function GET(req) {
       filters.push({
         column: columns[i],
         value: val,
-        match: matches[i] === "contains" ? "contains" : "exact",
+        match: matches[i] === "contains" ? "contains" : matches[i] === "server" ? "server" : "exact",
       });
     }
   }
@@ -127,7 +127,12 @@ export async function GET(req) {
       if (hasFilter) {
         const conditions = [];
         filters.forEach((f, i) => {
-          if (f.match === "contains") {
+          if (f.match === "server") {
+            conditions.push(
+              `EXISTS (SELECT 1 FROM unnest(string_to_array("${f.column}"::text, ',')) AS t(token) WHERE trim(t.token) ILIKE $${i + 1})`
+            );
+            queryParams.push(f.value);
+          } else if (f.match === "contains") {
             conditions.push(`"${f.column}"::text ILIKE $${i + 1}`);
             queryParams.push(`%${f.value}%`);
           } else {

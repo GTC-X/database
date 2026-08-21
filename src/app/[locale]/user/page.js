@@ -29,7 +29,7 @@ const COLUMN_HINTS = {
     first_name: "First or last name",
     last_name: "First or last name",
     country: "Country name or code",
-    server_list: "Any server — e.g. MT5_3, MT4",
+    server_list: "Pick exact server — MT4 won't match MT4_2",
     is_maxtech: "y = yes, n = no",
     is_ts: "y = yes, n = no",
     mt4_server: "y = yes, n = no",
@@ -67,6 +67,20 @@ const CONTAINS_DEFAULT_COLUMNS = new Set([
     "max_usertype",
     "ts_usertype",
 ]);
+
+const SERVER_GROUPS = [
+    { label: "MT4 servers", servers: ["MT4", "MT4_2", "MT4_3"] },
+    { label: "MT5 servers", servers: ["MT5", "MT5_2", "MT5_3", "MT5_4"] },
+];
+
+const ALL_SERVERS = SERVER_GROUPS.flatMap((g) => g.servers);
+
+function getServerBadgeClass(server) {
+    const s = server.toUpperCase();
+    if (s.startsWith("MT5")) return "bg-amber-500/20 text-amber-200 border border-amber-500/40";
+    if (s.startsWith("MT4")) return "bg-sky-500/20 text-sky-200 border border-sky-500/40";
+    return "bg-gray-500/20 text-gray-300 border border-gray-500/40";
+}
 
 const QUICK_FILTERS = [
     {
@@ -117,6 +131,7 @@ function getColumnLabel(col) {
 }
 
 function defaultMatchForColumn(column) {
+    if (column === "server_list") return "server";
     if (YES_NO_COLUMNS.has(column)) return "exact";
     if (CONTAINS_DEFAULT_COLUMNS.has(column)) return "contains";
     return "exact";
@@ -181,7 +196,8 @@ function ServerListBadges({ value }) {
             {servers.map((server) => (
                 <span
                     key={server}
-                    className="inline-flex rounded-md bg-[#293794]/80 px-2 py-0.5 text-xs font-medium text-[#B48755]"
+                    className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${getServerBadgeClass(server)}`}
+                    title={server.startsWith("MT4") ? "MT4 platform server" : server.startsWith("MT5") ? "MT5 platform server" : server}
                 >
                     {server}
                 </span>
@@ -364,9 +380,7 @@ export default function ClientAccountDashboard() {
                 const next = { ...f, [field]: value };
                 if (field === "column" && value) {
                     next.match = defaultMatchForColumn(value);
-                    if (YES_NO_COLUMNS.has(value) && !["y", "n"].includes(f.value)) {
-                        next.value = "";
-                    }
+                    if (value !== f.column) next.value = "";
                 }
                 return next;
             })
@@ -398,6 +412,19 @@ export default function ClientAccountDashboard() {
     const handleQuickFilter = (preset) => {
         setFilters(preset.filters);
         runFilters(preset.filters);
+    };
+
+    const handleServerFilter = (server) => {
+        if (!server) return;
+        const serverFilters = [{ column: "server_list", value: server, match: "server" }];
+        setFilters(serverFilters);
+        runFilters(serverFilters);
+    };
+
+    const formatMatchLabel = (match) => {
+        if (match === "contains") return " ∋ ";
+        if (match === "server") return " has server ";
+        return " = ";
     };
 
     const handleLoadAll = () => {
@@ -477,8 +504,9 @@ export default function ClientAccountDashboard() {
                                 <li>Use <strong className="text-white">Quick search</strong> to find by email (partial match).</li>
                                 <li>Click a <strong className="text-white">Quick filter</strong> preset for common queries (MT5, Maxtech, etc.).</li>
                                 <li>Add multiple filters — all conditions must match (AND logic).</li>
-                                <li>Use <strong className="text-white">Contains</strong> for text; <strong className="text-white">Exact</strong> for yes/no fields.</li>
-                                <li><strong className="text-white">Server list</strong> shows all servers — filter with Contains, e.g. <code className="text-[#B48755]">MT5_3</code>.</li>
+                                <li><strong className="text-white">MT4 server</strong> / <strong className="text-white">MT5 server</strong> = yes/no for any MT4 or MT5 access.</li>
+                                <li><strong className="text-white">Server list</strong> = exact servers assigned (e.g. MT4, MT4_2, MT5_3). Blue = MT4, amber = MT5.</li>
+                                <li>Use <strong className="text-white">Filter by server</strong> to target one server exactly — MT4 will not match MT4_2.</li>
                                 <li><strong className="text-white">Load all</strong> fetches up to 10,000 records (may be slow).</li>
                             </ul>
                         </div>
@@ -515,6 +543,60 @@ export default function ClientAccountDashboard() {
                                 Load all
                             </button>
                         </form>
+                    </div>
+
+                    {/* Server-specific filter */}
+                    <div className="mb-4 rounded-xl border border-[#293794]/80 bg-[#1a1f4a]/60 p-4">
+                        <div className="mb-3 flex flex-wrap items-center gap-3">
+                            <div className="space-y-1">
+                                <label className="block text-xs font-medium uppercase tracking-wider text-[#B48755]">
+                                    Filter by specific server
+                                </label>
+                                <p className="text-xs text-gray-500">
+                                    Exact match — MT4, MT4_2, and MT4_3 are treated separately.
+                                </p>
+                            </div>
+                            <div className="ml-auto flex items-center gap-3 text-xs">
+                                <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-sky-200">MT4</span>
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-200">MT5</span>
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                            <select
+                                defaultValue=""
+                                onChange={(e) => {
+                                    handleServerFilter(e.target.value);
+                                    e.target.value = "";
+                                }}
+                                disabled={accountData.loading}
+                                className="w-full rounded-lg border border-[#293794] bg-[#0F143A] px-4 py-2.5 text-white focus:border-[#B48755] focus:outline-none sm:max-w-xs"
+                            >
+                                <option value="">Choose server…</option>
+                                {SERVER_GROUPS.map((group) => (
+                                    <optgroup key={group.label} label={group.label}>
+                                        {group.servers.map((server) => (
+                                            <option key={server} value={server}>
+                                                {server}
+                                            </option>
+                                        ))}
+                                    </optgroup>
+                                ))}
+                            </select>
+                            <div className="flex flex-wrap gap-2">
+                                {ALL_SERVERS.map((server) => (
+                                    <button
+                                        key={server}
+                                        type="button"
+                                        title={`Show clients on ${server} only`}
+                                        onClick={() => handleServerFilter(server)}
+                                        disabled={accountData.loading}
+                                        className={`rounded-full px-2.5 py-1 text-xs font-semibold transition hover:opacity-90 disabled:opacity-50 ${getServerBadgeClass(server)}`}
+                                    >
+                                        {server}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
 
                     {/* Quick filter presets */}
@@ -582,6 +664,23 @@ export default function ClientAccountDashboard() {
                                                 <option value="y">Yes (y)</option>
                                                 <option value="n">No (n)</option>
                                             </select>
+                                        ) : filter.column === "server_list" ? (
+                                            <select
+                                                value={filter.value}
+                                                onChange={(e) => updateFilter(index, "value", e.target.value)}
+                                                className="w-full rounded-lg border border-[#293794] bg-[#0F143A] px-4 py-2.5 text-white focus:border-[#B48755] focus:outline-none focus:ring-1 focus:ring-[#B48755]"
+                                            >
+                                                <option value="">Select server…</option>
+                                                {SERVER_GROUPS.map((group) => (
+                                                    <optgroup key={group.label} label={group.label}>
+                                                        {group.servers.map((server) => (
+                                                            <option key={server} value={server}>
+                                                                {server}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                ))}
+                                            </select>
                                         ) : (
                                             <input
                                                 type="text"
@@ -599,11 +698,12 @@ export default function ClientAccountDashboard() {
                                         <select
                                             value={filter.match}
                                             onChange={(e) => updateFilter(index, "match", e.target.value)}
-                                            disabled={YES_NO_COLUMNS.has(filter.column)}
+                                            disabled={YES_NO_COLUMNS.has(filter.column) || filter.column === "server_list"}
                                             className="w-full rounded-lg border border-[#293794] bg-[#0F143A] px-4 py-2.5 text-white focus:border-[#B48755] focus:outline-none focus:ring-1 focus:ring-[#B48755] disabled:opacity-60"
                                         >
                                             <option value="exact">Exact match</option>
                                             <option value="contains">Contains</option>
+                                            <option value="server">Exact server</option>
                                         </select>
                                     </div>
                                     <div className="flex items-end gap-2">
@@ -655,7 +755,7 @@ export default function ClientAccountDashboard() {
                                         title="Click to remove this filter"
                                     >
                                         <strong className="text-white">{getColumnLabel(f.column)}</strong>
-                                        {f.match === "contains" ? " ∋ " : " = "}
+                                        {formatMatchLabel(f.match)}
                                         &quot;{f.value}&quot;
                                         <span className="ml-1 text-gray-400">×</span>
                                     </button>
