@@ -19,6 +19,7 @@ const COLUMN_LABELS = {
     ts_status: "TS status",
     mt4_server: "MT4 server",
     mt5_server: "MT5 server",
+    server_list: "Server list",
     update_time: "Update time",
     max_usertype: "Max Usertype",
 };
@@ -450,7 +451,11 @@ export default function GTCRegisterWithDesign() {
                                                     {accountData.fields.map((col) => (
                                                         <td
                                                             key={col}
-                                                            className="max-w-[220px] truncate px-4 py-3 text-gray-200"
+                                                            className={
+                                                                col === "server_list"
+                                                                    ? "min-w-[200px] max-w-[360px] whitespace-normal break-words px-4 py-3 text-gray-200"
+                                                                    : "max-w-[220px] truncate px-4 py-3 text-gray-200"
+                                                            }
                                                             title={String(row[col] ?? "")}
                                                         >
                                                             {row[col] != null ? String(row[col]) : "—"}
