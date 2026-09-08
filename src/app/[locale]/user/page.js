@@ -28,7 +28,7 @@ const COLUMN_HINTS = {
     email: "Partial email works — e.g. gmail.com",
     first_name: "First or last name",
     last_name: "First or last name",
-    country: "Country name or code",
+    country: "Country name(s), comma-separated — e.g. China, India, AE",
     server_list: "Pick exact server — MT4 won't match MT4_2",
     is_maxtech: "y = yes, n = no",
     is_ts: "y = yes, n = no",
@@ -229,8 +229,12 @@ export default function ClientAccountDashboard() {
     const [filters, setFilters] = useState([{ column: "email", value: "", match: "contains" }]);
     const [appliedFilters, setAppliedFilters] = useState([]);
     const [quickSearch, setQuickSearch] = useState("");
+    const [countryMode, setCountryMode] = useState("include");
+    const [countryMatch, setCountryMatch] = useState("contains");
+    const [countryValue, setCountryValue] = useState("");
     const [exportColumns, setExportColumns] = useState(new Set());
     const [exportPanelOpen, setExportPanelOpen] = useState(false);
+    const [exportLoading, setExportLoading] = useState(false);
     const [columnsPanelOpen, setColumnsPanelOpen] = useState(false);
     const [visibleColumns, setVisibleColumns] = useState(null);
     const hasInitializedExportRef = useRef(false);
@@ -289,53 +293,88 @@ export default function ClientAccountDashboard() {
     const selectAllExportColumns = () => setExportColumns(new Set(accountData.fields));
     const clearAllExportColumns = () => setExportColumns(new Set());
 
-    const handleExportExcel = () => {
+    const buildFilterParams = (filterList, { forExport = false } = {}) => {
+        const params = new URLSearchParams();
+        const active = (filterList || []).filter(
+            (f) => f.column && f.value !== null && String(f.value).trim() !== ""
+        );
+        active.forEach((f) => {
+            params.append("column", f.column);
+            params.append("value", String(f.value).trim());
+            params.append("match", f.match || "exact");
+        });
+        if (forExport) params.append("export", "1");
+        return params;
+    };
+
+    const parseApiResponse = async (res) => {
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+            return res.json();
+        }
+        const text = await res.text();
+        throw new Error(
+            res.ok
+                ? "Server returned an unexpected response format."
+                : `Server error (${res.status}). ${text.slice(0, 200)}`
+        );
+    };
+
+    const handleExportExcel = async () => {
         const cols = accountData.fields.filter((c) => exportColumns.has(c));
         if (cols.length === 0) return;
-        const headers = cols.map((c) => getColumnLabel(c));
-        const data = accountData.rows.map((row) => {
-            const obj = {};
-            cols.forEach((c, i) => {
-                obj[headers[i]] = row[c] != null ? row[c] : "";
+
+        setExportLoading(true);
+        try {
+            const params = buildFilterParams(appliedFilters, { forExport: true });
+            const query = params.toString();
+            const res = await fetch(
+                `/api/client-account-info${query ? `?${query}` : "?export=1"}`,
+                { cache: "no-store" }
+            );
+            const data = await parseApiResponse(res);
+            if (!res.ok) {
+                throw new Error(data.error || "Failed to fetch export data");
+            }
+
+            const exportRows = data.rows || [];
+            const headers = cols.map((c) => getColumnLabel(c));
+            const sheetData = exportRows.map((row) => {
+                const obj = {};
+                cols.forEach((c, i) => {
+                    obj[headers[i]] = row[c] != null ? row[c] : "";
+                });
+                return obj;
             });
-            return obj;
-        });
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Client Account Info");
-        XLSX.writeFile(wb, "client-account-info.xlsx");
-        setExportPanelOpen(false);
+
+            const ws = XLSX.utils.json_to_sheet(sheetData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Client Account Info");
+            XLSX.writeFile(wb, "client-account-info.xlsx");
+            setExportPanelOpen(false);
+
+            if (data.truncated) {
+                window.alert(
+                    `Export included ${exportRows.length.toLocaleString()} rows (the current export limit). There may be more matching records in the database. Ask your admin to raise HOLOGRES_EXPORT_LIMIT if needed.`
+                );
+            }
+        } catch (e) {
+            window.alert(e.message || "Export failed");
+        } finally {
+            setExportLoading(false);
+        }
     };
 
     const fetchData = useCallback(async (filterList) => {
         setAccountData((prev) => ({ ...prev, loading: true, error: null }));
         try {
-            const params = new URLSearchParams();
-            const active = (filterList || []).filter(
-                (f) => f.column && f.value !== null && String(f.value).trim() !== ""
-            );
-            active.forEach((f) => {
-                params.append("column", f.column);
-                params.append("value", String(f.value).trim());
-                params.append("match", f.match || "exact");
-            });
+            const params = buildFilterParams(filterList);
             const query = params.toString();
             const res = await fetch(
                 `/api/client-account-info${query ? `?${query}` : ""}`,
                 { cache: "no-store" }
             );
-            const contentType = res.headers.get("content-type") || "";
-            let data;
-            if (contentType.includes("application/json")) {
-                data = await res.json();
-            } else {
-                const text = await res.text();
-                throw new Error(
-                    res.ok
-                        ? "Server returned an unexpected response format."
-                        : `Server error (${res.status}). ${text.slice(0, 200)}`
-                );
-            }
+            const data = await parseApiResponse(res);
             if (!res.ok) {
                 setAccountData((prev) => ({
                     ...prev,
@@ -422,9 +461,37 @@ export default function ClientAccountDashboard() {
     };
 
     const formatMatchLabel = (match) => {
-        if (match === "contains") return " ∋ ";
+        if (match === "contains") return " includes ";
+        if (match === "exclude_contains") return " excludes ";
+        if (match === "exclude_exact") return " excludes (exact) ";
         if (match === "server") return " has server ";
         return " = ";
+    };
+
+    const getCountryMatchType = () => {
+        if (countryMode === "exclude") {
+            return countryMatch === "exact" ? "exclude_exact" : "exclude_contains";
+        }
+        return countryMatch;
+    };
+
+    const mergeCountryFilter = (countryFilter) => {
+        const otherFilters = appliedFilters.filter((f) => f.column !== "country");
+        return [...otherFilters, countryFilter];
+    };
+
+    const handleCountryFilter = (e) => {
+        e?.preventDefault();
+        const value = countryValue.trim();
+        if (!value) return;
+        const countryFilter = {
+            column: "country",
+            value,
+            match: getCountryMatchType(),
+        };
+        const nextFilters = mergeCountryFilter(countryFilter);
+        setFilters(nextFilters);
+        runFilters(nextFilters);
     };
 
     const handleLoadAll = () => {
@@ -439,6 +506,9 @@ export default function ClientAccountDashboard() {
         setFilters([{ column: "email", value: "", match: "contains" }]);
         setAppliedFilters([]);
         setQuickSearch("");
+        setCountryValue("");
+        setCountryMode("include");
+        setCountryMatch("contains");
         setAccountData({ rows: [], fields: [], loading: false, error: null, hasLoaded: false });
         hasInitializedExportRef.current = false;
         setVisibleColumns(null);
@@ -507,7 +577,8 @@ export default function ClientAccountDashboard() {
                                 <li><strong className="text-white">MT4 server</strong> / <strong className="text-white">MT5 server</strong> = yes/no for any MT4 or MT5 access.</li>
                                 <li><strong className="text-white">Server list</strong> = exact servers assigned (e.g. MT4, MT4_2, MT5_3). Blue = MT4, amber = MT5.</li>
                                 <li>Use <strong className="text-white">Filter by server</strong> to target one server exactly — MT4 will not match MT4_2.</li>
-                                <li><strong className="text-white">Load all</strong> fetches up to 10,000 records (may be slow).</li>
+                                <li>Use <strong className="text-white">Country filter</strong> to include or exclude countries — comma-separate multiple (e.g. <code className="text-[#B48755]">China, India</code>).</li>
+                                <li>Export uses the same active filters, including country include/exclude rules.</li>
                             </ul>
                         </div>
                     )}
@@ -542,6 +613,65 @@ export default function ClientAccountDashboard() {
                             >
                                 Load all
                             </button>
+                        </form>
+                    </div>
+
+                    {/* Country include / exclude */}
+                    <div className="mb-4 rounded-xl border border-[#293794]/80 bg-[#1a1f4a]/60 p-4">
+                        <form onSubmit={handleCountryFilter} className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium uppercase tracking-wider text-[#B48755]">
+                                    Filter by country
+                                </label>
+                                <p className="mt-1 text-xs text-gray-500">
+                                    Include or exclude countries. Use commas for multiple — e.g. exclude <code className="text-gray-400">China, India</code>
+                                </p>
+                            </div>
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                                <div className="space-y-1 lg:min-w-[140px]">
+                                    <label className="block text-xs text-gray-500">Action</label>
+                                    <select
+                                        value={countryMode}
+                                        onChange={(e) => setCountryMode(e.target.value)}
+                                        className="w-full rounded-lg border border-[#293794] bg-[#0F143A] px-4 py-2.5 text-white focus:border-[#B48755] focus:outline-none"
+                                    >
+                                        <option value="include">Include country</option>
+                                        <option value="exclude">Exclude country</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1 lg:min-w-[140px]">
+                                    <label className="block text-xs text-gray-500">Match type</label>
+                                    <select
+                                        value={countryMatch}
+                                        onChange={(e) => setCountryMatch(e.target.value)}
+                                        className="w-full rounded-lg border border-[#293794] bg-[#0F143A] px-4 py-2.5 text-white focus:border-[#B48755] focus:outline-none"
+                                    >
+                                        <option value="contains">Partial match</option>
+                                        <option value="exact">Exact match</option>
+                                    </select>
+                                </div>
+                                <div className="flex-1 space-y-1">
+                                    <label className="block text-xs text-gray-500">Country</label>
+                                    <input
+                                        type="text"
+                                        value={countryValue}
+                                        onChange={(e) => setCountryValue(e.target.value)}
+                                        placeholder="e.g. China, United Arab Emirates, AE"
+                                        className="w-full rounded-lg border border-[#293794] bg-[#0F143A] px-4 py-2.5 text-white placeholder-gray-500 focus:border-[#B48755] focus:outline-none focus:ring-1 focus:ring-[#B48755]"
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={!countryValue.trim() || accountData.loading}
+                                    className={`rounded-lg px-5 py-2.5 font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                        countryMode === "exclude"
+                                            ? "bg-red-600/90 hover:bg-red-500"
+                                            : "bg-[#B48755] hover:bg-[#c99a66]"
+                                    }`}
+                                >
+                                    {countryMode === "exclude" ? "Exclude & load" : "Include & load"}
+                                </button>
+                            </div>
                         </form>
                     </div>
 
@@ -701,8 +831,10 @@ export default function ClientAccountDashboard() {
                                             disabled={YES_NO_COLUMNS.has(filter.column) || filter.column === "server_list"}
                                             className="w-full rounded-lg border border-[#293794] bg-[#0F143A] px-4 py-2.5 text-white focus:border-[#B48755] focus:outline-none focus:ring-1 focus:ring-[#B48755] disabled:opacity-60"
                                         >
-                                            <option value="exact">Exact match</option>
-                                            <option value="contains">Contains</option>
+                                            <option value="exact">Equals (include)</option>
+                                            <option value="contains">Contains (include)</option>
+                                            <option value="exclude_exact">Equals (exclude)</option>
+                                            <option value="exclude_contains">Contains (exclude)</option>
                                             <option value="server">Exact server</option>
                                         </select>
                                     </div>
@@ -853,13 +985,16 @@ export default function ClientAccountDashboard() {
                                     </label>
                                 ))}
                             </div>
+                            <p className="mb-3 text-xs text-gray-500">
+                                Export fetches up to 100,000 matching rows (separate from the 10,000 row table limit).
+                            </p>
                             <button
                                 type="button"
                                 onClick={handleExportExcel}
-                                disabled={exportColumns.size === 0}
+                                disabled={exportColumns.size === 0 || exportLoading}
                                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
                             >
-                                Export ({exportColumns.size} columns)
+                                {exportLoading ? "Preparing export…" : `Export (${exportColumns.size} columns)`}
                             </button>
                         </div>
                     )}

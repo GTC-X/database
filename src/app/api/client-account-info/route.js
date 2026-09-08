@@ -9,7 +9,96 @@ export const dynamic = "force-dynamic";
 const CONNECT_TIMEOUT_MS = 30000;
 const RETRY_COUNT = 2;
 const RETRY_DELAY_MS = 2000;
-const MAX_ROWS = 10000;
+const DEFAULT_LIMIT = Number(process.env.HOLOGRES_QUERY_LIMIT) || 10000;
+const EXPORT_LIMIT = Number(process.env.HOLOGRES_EXPORT_LIMIT) || 100000;
+
+function getRowLimit(searchParams) {
+  const isExport = searchParams.get("export") === "1";
+  return isExport ? EXPORT_LIMIT : DEFAULT_LIMIT;
+}
+
+function splitFilterValues(value) {
+  return String(value)
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function normalizeMatchType(match) {
+  const normalized = (match || "exact").toLowerCase();
+  if (
+    normalized === "contains" ||
+    normalized === "server" ||
+    normalized === "exclude_exact" ||
+    normalized === "exclude_contains"
+  ) {
+    return normalized;
+  }
+  return "exact";
+}
+
+function buildFilterConditions(filters) {
+  const conditions = [];
+  const queryParams = [];
+  let paramIndex = 0;
+
+  const nextParam = (value) => {
+    paramIndex += 1;
+    queryParams.push(value);
+    return `$${paramIndex}`;
+  };
+
+  for (const filter of filters) {
+    const column = filter.column;
+    const values = splitFilterValues(filter.value);
+    if (values.length === 0) continue;
+
+    if (filter.match === "server") {
+      const placeholder = nextParam(values[0]);
+      conditions.push(
+        `EXISTS (SELECT 1 FROM unnest(string_to_array("${column}"::text, ',')) AS t(token) WHERE trim(t.token) ILIKE ${placeholder})`
+      );
+      continue;
+    }
+
+    if (filter.match === "contains") {
+      if (values.length === 1) {
+        const placeholder = nextParam(`%${values[0]}%`);
+        conditions.push(`"${column}"::text ILIKE ${placeholder}`);
+      } else {
+        const parts = values.map((value) => {
+          const placeholder = nextParam(`%${value}%`);
+          return `"${column}"::text ILIKE ${placeholder}`;
+        });
+        conditions.push(`(${parts.join(" OR ")})`);
+      }
+      continue;
+    }
+
+    if (filter.match === "exclude_contains") {
+      const parts = values.map((value) => {
+        const placeholder = nextParam(`%${value}%`);
+        return `"${column}"::text NOT ILIKE ${placeholder}`;
+      });
+      conditions.push(`(${parts.join(" AND ")})`);
+      continue;
+    }
+
+    if (filter.match === "exclude_exact") {
+      const parts = values.map((value) => {
+        const placeholder = nextParam(value);
+        return `"${column}"::text <> ${placeholder}`;
+      });
+      conditions.push(`(${parts.join(" AND ")})`);
+      continue;
+    }
+
+    const placeholder = nextParam(values[0]);
+    conditions.push(`"${column}" = ${placeholder}`);
+  }
+
+  return { conditions, queryParams };
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -100,11 +189,12 @@ export async function GET(req) {
       filters.push({
         column: columns[i],
         value: val,
-        match: matches[i] === "contains" ? "contains" : matches[i] === "server" ? "server" : "exact",
+        match: normalizeMatchType(matches[i]),
       });
     }
   }
   const hasFilter = filters.length > 0;
+  const rowLimit = getRowLimit(searchParams);
 
   const allowedColumn = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
   for (const f of filters) {
@@ -123,35 +213,27 @@ export async function GET(req) {
       await client.connect();
 
       let queryText = "SELECT * FROM dmt.client_account_info";
-      const queryParams = [];
+      let queryParams = [];
       if (hasFilter) {
-        const conditions = [];
-        filters.forEach((f, i) => {
-          if (f.match === "server") {
-            conditions.push(
-              `EXISTS (SELECT 1 FROM unnest(string_to_array("${f.column}"::text, ',')) AS t(token) WHERE trim(t.token) ILIKE $${i + 1})`
-            );
-            queryParams.push(f.value);
-          } else if (f.match === "contains") {
-            conditions.push(`"${f.column}"::text ILIKE $${i + 1}`);
-            queryParams.push(`%${f.value}%`);
-          } else {
-            conditions.push(`"${f.column}" = $${i + 1}`);
-            queryParams.push(f.value);
-          }
-        });
-        queryText += " WHERE " + conditions.join(" AND ");
+        const built = buildFilterConditions(filters);
+        if (built.conditions.length > 0) {
+          queryText += " WHERE " + built.conditions.join(" AND ");
+        }
+        queryParams = built.queryParams;
       }
-      queryText += ` LIMIT ${MAX_ROWS}`;
+      queryText += ` LIMIT ${rowLimit}`;
 
       const result = await client.query(
         queryParams.length ? { text: queryText, values: queryParams } : queryText
       );
       await client.end();
 
+      const rows = serializeRows(result.rows);
       return NextResponse.json({
-        rows: serializeRows(result.rows),
+        rows,
         fields: result.fields?.map((f) => f.name) ?? [],
+        limit: rowLimit,
+        truncated: rows.length >= rowLimit,
       });
     } catch (err) {
       lastError = err;
